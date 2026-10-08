@@ -1,6 +1,6 @@
 # AsusH3BatteryMonitor
 
-Experimental open-source battery monitor for the ASUS TUF Gaming H3 Wireless headset.
+Experimental open-source turbo vibe coded battery monitor for the ASUS TUF Gaming H3 Wireless headset.
 
 The project reads battery data directly from the headset dongle using a reverse-engineered HID protocol.
 
