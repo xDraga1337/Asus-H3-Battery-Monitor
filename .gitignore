@@ -1,0 +1,42 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build/package artifacts
+*.dll
+*.exe
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+*.cache
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Logs / temporary files
+*.log
+*.tmp
+*.temp
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Publish output
+publish/
+artifacts/
+out/
