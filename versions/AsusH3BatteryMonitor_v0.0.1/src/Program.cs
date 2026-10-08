@@ -13,6 +13,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         bool diagnostic = args.Contains("--diagnostic") || args.Contains("--inspect");
+        bool menuUsed = false;
         try
         {
             // Handle offline/help modes before any device enumeration or HID access.
@@ -46,6 +47,51 @@ internal static class Program
                 return 1;
             }
 
+            // Redirected CLI runs remain one-shot and unattended. Inspection/help/
+            // self-test keep their existing behavior instead of entering the menu.
+            if (inspectOnly || Console.IsInputRedirected || Console.IsOutputRedirected)
+                return ReadBattery(diagnostic, delayMs, inspectOnly);
+
+            // The menu itself keeps a double-click console alive. Suppress the old
+            // Enter-to-close pause so Q exits immediately without a second prompt.
+            menuUsed = true;
+            while (true)
+            {
+                Console.Clear();
+                // This method owns and disposes its HID stream before returning,
+                // including on failures. R re-enumerates and opens a fresh stream,
+                // so disconnect/reconnect can be retried without restarting the app.
+                ReadBattery(diagnostic, delayMs, inspectOnly: false);
+                Console.WriteLine();
+                Console.WriteLine("[R] Refresh    [Q] Quit");
+
+                // Block for an explicit key; no Enter, timer, polling or automatic
+                // retry. Ignore other keys without issuing another HID transaction.
+                ConsoleKey key;
+                do { key = Console.ReadKey(true).Key; }
+                while (key is not ConsoleKey.R and not ConsoleKey.Q);
+                if (key == ConsoleKey.Q) return 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            PrintUnavailable(diagnostic, ex);
+            return 3;
+        }
+        finally
+        {
+            // Covers success, early returns and handled exceptions in one place.
+            if (!menuUsed) PauseIfConsoleWouldClose();
+        }
+    }
+
+    // Keep a complete read attempt in its own scope: the existing protocol runs
+    // once, D cleanup completes, and the using stream is closed before the menu.
+    // A failed attempt returns its status rather than ending the interactive app.
+    private static int ReadBattery(bool diagnostic, int delayMs, bool inspectOnly)
+    {
+        try
+        {
             var watch = Stopwatch.StartNew();
             void Log(string text)
             {
@@ -125,8 +171,8 @@ internal static class Program
             var result = Protocol.Run(new HidTransport(stream), delayMs, Thread.Sleep, Log);
             foreach (string error in result.Errors) Log("ERROR: " + error);
             if (diagnostic && result.Response is not null) Protocol.PrintResponse(result.Response, Log);
-            Log("Transaction finished. No repeat transaction will be performed.");
-            // Return the original status directly; finally runs before every return.
+            Log("Transaction finished.");
+            // Preserve the existing per-attempt status codes for one-shot CLI runs.
             if (result.Errors.Count > 0)
             {
                 PrintUnavailable(diagnostic);
@@ -147,11 +193,6 @@ internal static class Program
             PrintUnavailable(diagnostic, ex);
             return 3;
         }
-        finally
-        {
-            // Covers success, early returns and handled exceptions in one place.
-            PauseIfConsoleWouldClose();
-        }
     }
 
     private static void PrintUnavailable(bool diagnostic, Exception? ex = null)
@@ -161,7 +202,7 @@ internal static class Program
         Console.Error.WriteLine($"ERROR: {ex.GetType().Name}: {ex.Message} (HRESULT 0x{ex.HResult:X8})");
         if (ex.InnerException is not null)
             Console.Error.WriteLine($"Inner error: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-        Console.Error.WriteLine("No retry will be attempted. Include this error in the pasted results.");
+        Console.Error.WriteLine("No automatic retry will be attempted. Include this error in the pasted results.");
     }
 
     [DllImport("kernel32.dll", ExactSpelling = true)]
@@ -196,7 +237,8 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("AsusH3BatteryMonitor.exe [--diagnostic] [--delay 20|35|50|100] [--inspect]");
-        Console.WriteLine("Default: ONE A/B/C/D feature transaction with 35 ms waits; print battery and voltage.");
+        Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [Q] Quit (no Enter).");
+        Console.WriteLine("Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");
         Console.WriteLine("Battery percentage is approximate: >=3950 mV=100%, >=3850=75%, >=3750=50%, >=3500=25%, below=0% (critically low).");
         Console.WriteLine("Charging detection is unconfirmed; voltage-based percentages can be misleading while charging.");
         Console.WriteLine("--diagnostic: show verbose HID metadata, packets, timestamps and response bytes.");
