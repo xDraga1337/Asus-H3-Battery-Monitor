@@ -8,7 +8,7 @@ Current version:
 
 - alpha v0.0.1
 
-For more in depth  etails, usage, limitations, measured battery data, etc.. check out:
+For more in depth  details, usage, limitations, measured battery data, etc.. check out:
 
 [AsusH3BatteryMonitor v0.0.1 README](versions/AsusH3BatteryMonitor_v0.0.1/README.md)
 
