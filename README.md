@@ -6,7 +6,7 @@ The project reads battery data directly from the headset dongle using a reverse-
 
 Current version:
 
-- v0.0.1
+- alpha v0.0.1
 
 For more in depth  etails, usage, limitations, measured battery data, etc.. check out:
 
