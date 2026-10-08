@@ -1,0 +1,17 @@
+# .NET build output and version-local caches
+**/bin/
+**/obj/
+/tmp/
+/publish/
+/packages/
+
+# IDE and user settings
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pdb
+__pycache__/

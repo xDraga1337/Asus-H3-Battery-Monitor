@@ -1,0 +1,4 @@
+  Determining projects to restore...
+  Restored D:\programming\BIGPROJECTS\AsusH3BatteryMonitor\versions\AsusH3BatteryMonitor_v0.0.1\src\AsusH3BatteryMonitor.csproj (in 641 ms).
+  AsusH3BatteryMonitor -> D:\programming\BIGPROJECTS\AsusH3BatteryMonitor\versions\AsusH3BatteryMonitor_v0.0.1\tmp\build\Release\net10.0-windows\win-x64\AsusH3BatteryMonitor.dll
+  AsusH3BatteryMonitor -> D:\programming\BIGPROJECTS\AsusH3BatteryMonitor\versions\AsusH3BatteryMonitor_v0.0.1\publish\
