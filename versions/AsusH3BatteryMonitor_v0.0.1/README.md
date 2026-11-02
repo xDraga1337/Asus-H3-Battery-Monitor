@@ -29,8 +29,12 @@ Example:
 
 ```text
 ASUS TUF Gaming H3 Wireless
-Battery: 25%
-Voltage: 3694 mV
+Battery: 50%
+Voltage: 3782 mV
+
+Automatic refresh: OFF (5 seconds)
+[R] Refresh    [A] Toggle automatic refresh    [Q] Quit
+
 ```
 
 Unavailable devices, an unavailable required collection, rejected responses or
