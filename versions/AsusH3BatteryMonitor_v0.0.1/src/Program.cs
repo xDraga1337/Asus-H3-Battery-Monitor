@@ -12,13 +12,22 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // Offline failures must report the failed check, never a HID error.
+        if (args.Length == 1 && args[0] == "--self-test")
+        {
+            try { return OfflineChecks.Run(); }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"OFFLINE CHECKS FAILED: {ex}");
+                return 3;
+            }
+        }
+
         bool diagnostic = args.Contains("--diagnostic") || args.Contains("--inspect");
         bool menuUsed = false;
         try
         {
-            // Handle offline/help modes before any device enumeration or HID access.
-            if (args.Length == 1 && args[0] == "--self-test")
-                return OfflineChecks.Run(); // No DeviceList access or HidStream creation.
+            // Handle help before any device enumeration or HID access.
             if (args.Length == 1 && args[0] is "--help" or "-h")
             {
                 PrintHelp();
@@ -55,23 +64,8 @@ internal static class Program
             // The menu itself keeps a double-click console alive. Suppress the old
             // Enter-to-close pause so Q exits immediately without a second prompt.
             menuUsed = true;
-            while (true)
-            {
-                Console.Clear();
-                // This method owns and disposes its HID stream before returning,
-                // including on failures. R re-enumerates and opens a fresh stream,
-                // so disconnect/reconnect can be retried without restarting the app.
-                ReadBattery(diagnostic, delayMs, inspectOnly: false);
-                Console.WriteLine();
-                Console.WriteLine("[R] Refresh    [Q] Quit");
-
-                // Block for an explicit key; no Enter, timer, polling or automatic
-                // retry. Ignore other keys without issuing another HID transaction.
-                ConsoleKey key;
-                do { key = Console.ReadKey(true).Key; }
-                while (key is not ConsoleKey.R and not ConsoleKey.Q);
-                if (key == ConsoleKey.Q) return 0;
-            }
+            RunMenu(diagnostic, delayMs);
+            return 0;
         }
         catch (Exception ex)
         {
@@ -85,17 +79,59 @@ internal static class Program
         }
     }
 
+    private static void RunMenu(bool diagnostic, int delayMs)
+    {
+        using var refresh = new InteractiveRefresh(writer =>
+            ReadBattery(diagnostic, delayMs, inspectOnly: false, writer, writer));
+        var clock = Stopwatch.StartNew();
+        string display = "Reading battery...";
+        bool redraw = true;
+        while (true)
+        {
+            // Drain input before scheduling work, so Q and A/OFF cannot leave a
+            // queued timer callback or a second transaction behind.
+            while (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true).Key;
+                if (key == ConsoleKey.Q) return;
+                if (key == ConsoleKey.A) { refresh.ToggleAutomatic(); redraw = true; }
+                if (key == ConsoleKey.R) refresh.RequestManual();
+            }
+
+            if (refresh.Update(clock.Elapsed) is string result)
+            {
+                display = result;
+                redraw = true;
+            }
+            if (redraw)
+            {
+                Console.Clear();
+                Console.Write(display);
+                Console.WriteLine();
+                Console.WriteLine($"Automatic refresh: {(refresh.Automatic ? "ON" : "OFF")} (5 seconds)");
+                Console.WriteLine("[R] Refresh    [A] Toggle automatic refresh    [Q] Quit");
+                redraw = false;
+            }
+            Thread.Sleep(25);
+        }
+        // Dispose stops scheduling and allows the one active A/B/C/D sequence
+        // to close its stream. Never interrupt the captured cleanup packet.
+    }
+
     // Keep a complete read attempt in its own scope: the existing protocol runs
     // once, D cleanup completes, and the using stream is closed before the menu.
     // A failed attempt returns its status rather than ending the interactive app.
-    private static int ReadBattery(bool diagnostic, int delayMs, bool inspectOnly)
+    private static int ReadBattery(bool diagnostic, int delayMs, bool inspectOnly,
+        TextWriter? output = null, TextWriter? error = null)
     {
+        output ??= Console.Out;
+        error ??= Console.Error;
         try
         {
             var watch = Stopwatch.StartNew();
             void Log(string text)
             {
-                if (diagnostic) Console.WriteLine($"[{watch.Elapsed.TotalMilliseconds,10:F3} ms] {text}");
+                if (diagnostic) output.WriteLine($"[{watch.Elapsed.TotalMilliseconds,10:F3} ms] {text}");
             }
 
             Log("ASUS TUF Gaming H3 Wireless monitor v0.0.1; HidSharp 2.6.4; Windows x64.");
@@ -139,7 +175,7 @@ internal static class Program
                 }
                 catch (Exception ex)
                 {
-                    PrintUnavailable(diagnostic, ex);
+                    PrintUnavailable(diagnostic, ex, error);
                     return 3;
                 }
             }
@@ -147,7 +183,7 @@ internal static class Program
             if (uncertainTarget || candidates.Count != 1)
             {
                 Log($"Refusing feature transaction: eligible paths={candidates.Count}; uninspectable MI_03 path={uncertainTarget}. Expected one verified FF00:0001 collection with feature FF/64.");
-                PrintUnavailable(diagnostic);
+                PrintUnavailable(diagnostic, output: error);
                 return 4;
             }
 
@@ -160,7 +196,7 @@ internal static class Program
                 return 0;
             }
 
-            Log("Performing ONE captured candidate sequence: A -> B -> C -> D; no retries or polling.");
+            Log("Performing ONE captured candidate sequence: A -> B -> C -> D; no retries within the transaction.");
             var configuration = new OpenConfiguration();
             configuration.SetOption(OpenOption.Exclusive, false);
             using var stream = selected.Open(configuration);
@@ -169,40 +205,41 @@ internal static class Program
             Log("Device stream opened with Exclusive=false. Read/write timeouts=2000 ms; synchronous feature IO is governed by Windows.");
             // Protocol.Run owns the captured packet sequence and its existing delays.
             var result = Protocol.Run(new HidTransport(stream), delayMs, Thread.Sleep, Log);
-            foreach (string error in result.Errors) Log("ERROR: " + error);
+            foreach (string transactionError in result.Errors) Log("ERROR: " + transactionError);
             if (diagnostic && result.Response is not null) Protocol.PrintResponse(result.Response, Log);
             Log("Transaction finished.");
             // Preserve the existing per-attempt status codes for one-shot CLI runs.
             if (result.Errors.Count > 0)
             {
-                PrintUnavailable(diagnostic);
+                PrintUnavailable(diagnostic, output: error);
                 return 3;
             }
             if (result.Response is null || !Protocol.Parse(result.Response).PatternMatched)
             {
-                PrintUnavailable(diagnostic);
+                PrintUnavailable(diagnostic, output: error);
                 return 2;
             }
 
             // Presentation is separate from the unchanged protocol parser and HID transaction.
-            BatteryDisplay.Print(new BatteryReading(Protocol.Parse(result.Response).Millivolts));
+            BatteryDisplay.Print(new BatteryReading(Protocol.Parse(result.Response).Millivolts), output);
             return 0;
         }
         catch (Exception ex)
         {
-            PrintUnavailable(diagnostic, ex);
+            PrintUnavailable(diagnostic, ex, error);
             return 3;
         }
     }
 
-    private static void PrintUnavailable(bool diagnostic, Exception? ex = null)
+    private static void PrintUnavailable(bool diagnostic, Exception? ex = null, TextWriter? output = null)
     {
-        Console.Error.WriteLine("Headset not connected or unavailable.");
+        output ??= Console.Error;
+        output.WriteLine("Headset not connected or unavailable.");
         if (!diagnostic || ex is null) return;
-        Console.Error.WriteLine($"ERROR: {ex.GetType().Name}: {ex.Message} (HRESULT 0x{ex.HResult:X8})");
+        output.WriteLine($"ERROR: {ex.GetType().Name}: {ex.Message} (HRESULT 0x{ex.HResult:X8})");
         if (ex.InnerException is not null)
-            Console.Error.WriteLine($"Inner error: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-        Console.Error.WriteLine("No automatic retry will be attempted. Include this error in the pasted results.");
+            output.WriteLine($"Inner error: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+        output.WriteLine("This query failed. Use R to refresh, or A for automatic refresh in the interactive menu. Include this error in the pasted results.");
     }
 
     [DllImport("kernel32.dll", ExactSpelling = true)]
@@ -237,14 +274,14 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("AsusH3BatteryMonitor.exe [--diagnostic] [--delay 20|35|50|100] [--inspect]");
-        Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [Q] Quit (no Enter).");
-        Console.WriteLine("Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");
+        Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [A] Auto ON/OFF, [Q] Quit (no Enter).");
+        Console.WriteLine("Auto refresh defaults OFF; enabling queries immediately, then every 5 seconds. Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");
         Console.WriteLine("Battery percentage is approximate: >=3950 mV=100%, >=3850=75%, >=3750=50%, >=3500=25%, below=0% (critically low).");
         Console.WriteLine("Charging detection is unconfirmed; voltage-based percentages can be misleading while charging.");
         Console.WriteLine("--diagnostic: show verbose HID metadata, packets, timestamps and response bytes.");
         Console.WriteLine("--inspect: enumerate matching devices and report metadata; send no feature reports.");
         Console.WriteLine("--self-test: offline synthetic checks only; never access DeviceList or HID devices.");
-        Console.WriteLine("No custom packets, polling, automatic delay sweep, firmware or configuration commands.");
+        Console.WriteLine("No custom packets, automatic delay sweep, firmware or configuration commands.");
         Console.WriteLine("Exit codes: 0=match/inspection/checks OK; 1=arguments/platform; 2=pattern mismatch; 3=IO/check failure; 4=selection refused.");
     }
 

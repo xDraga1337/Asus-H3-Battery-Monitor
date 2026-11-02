@@ -9,7 +9,15 @@ millivolts. The protocol is reverse engineered and experimental.
 ## Run
 
 Copy `publish\AsusH3BatteryMonitor.exe` anywhere and double-click it. The console
-stays open until Enter when launched in its own console. From PowerShell:
+stays open with **R** to refresh, **A** to toggle automatic refresh, and **Q** to
+quit (no Enter). Automatic refresh is **OFF by default**. Enabling it requests a
+battery query immediately, then polls every 5 seconds. A busy query always
+finishes before another starts; missed polls never build a backlog.
+Manual and automatic requests share one worker; transactions never overlap.
+The display is replaced on refresh, including in diagnostic mode. Errors remain
+in the menu so manual or automatic refresh can recover after the headset or USB
+dongle reconnects. Q stops scheduling immediately and lets any active transaction
+finish its existing cleanup before exiting; it never waits for the next poll. From PowerShell:
 
 ```powershell
 .\AsusH3BatteryMonitor.exe
@@ -35,7 +43,7 @@ and exceptions:
 
 `--inspect` prints device metadata without sending a feature transaction.
 `--self-test` runs synthetic offline checks without accessing HID devices.
-`--help` lists options and exit codes. There is no continuous polling, GUI or tray.
+`--help` lists options and exit codes. Redirected runs remain one-shot. There is no GUI or tray.
 
 ## Approximate battery levels
 
@@ -93,8 +101,8 @@ by default. Existing optional delays (20/35/50/100 ms) are preserved.
 
 The existing response-prefix check remains unchanged. Bytes `[11]` and `[12]`
 are decoded little-endian as millivolts by the existing parser. Transaction
-cleanup, stream options and timeout settings remain unchanged. No retries,
-additional queries or charging commands are introduced.
+cleanup, stream options and timeout settings remain unchanged. Each refresh uses
+one transaction with no internal retries or additional charging commands.
 
 ## Build and layout
 
@@ -115,10 +123,11 @@ keeps configured build output, package caches and temporary build files there.
 Restore uses the local HidSharp archive when present and official NuGet for
 missing packages, including the Windows runtime pack.
 
-- `src/Program.cs`: CLI, unchanged device selection, HID handoff, errors and pause.
+- `src/Program.cs`: CLI, console controls, unchanged device selection and HID handoff.
+- `src/InteractiveRefresh.cs`: serialized refresh scheduling and buffered query output.
 - `src/Protocol.cs`: preserved packets, transaction, parser and diagnostics.
 - `src/BatteryDisplay.cs`: approximate mapping and presentation.
-- `src/OfflineChecks.cs`: synthetic protocol and presentation checks.
+- `src/OfflineChecks.cs`: synthetic protocol, presentation and refresh scheduling checks.
 - `publish/`: final executable; ignored by Git.
 - `tmp/` and `packages/`: generated build output/caches; ignored by Git.
 - `notes/`: build and verification evidence.

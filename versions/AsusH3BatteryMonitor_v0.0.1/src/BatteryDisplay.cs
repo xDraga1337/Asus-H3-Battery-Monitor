@@ -18,25 +18,26 @@ internal static class BatteryDisplay
         _ => 0
     };
 
-    internal static void Print(BatteryReading reading)
+    internal static void Print(BatteryReading reading, TextWriter? output = null)
     {
-        Console.WriteLine("ASUS TUF Gaming H3 Wireless");
+        output ??= Console.Out;
+        output.WriteLine("ASUS TUF Gaming H3 Wireless");
         if (reading.IsCharging == true)
         {
             // Reserved for a future confirmed detector. An estimate must come from
             // independent evidence, such as a trusted prior unplugged measurement.
             // Never derive it from the elevated charging voltage.
-            Console.WriteLine(reading.EstimatedPercentWhileCharging is int estimate
+            output.WriteLine(reading.EstimatedPercentWhileCharging is int estimate
                 ? $"Battery: ~{estimate}%"
                 : "Battery: Unknown");
-            Console.WriteLine("Status: Charging");
+            output.WriteLine("Status: Charging");
         }
         else
         {
             // Preserve current behavior while charging state remains unconfirmed.
             int percent = ApproximatePercent(reading.Millivolts);
-            Console.WriteLine($"Battery: {percent}%" + (percent == 0 ? " (critically low)" : ""));
+            output.WriteLine($"Battery: {percent}%" + (percent == 0 ? " (critically low)" : ""));
         }
-        Console.WriteLine($"Voltage: {reading.Millivolts} mV");
+        output.WriteLine($"Voltage: {reading.Millivolts} mV");
     }
 }

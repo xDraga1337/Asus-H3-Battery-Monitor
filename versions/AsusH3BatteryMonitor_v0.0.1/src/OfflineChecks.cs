@@ -108,8 +108,102 @@ internal static class OfflineChecks
             "concise summary, critical-low label and future charging presentation");
         Check(new BatteryReading(4303).IsCharging is null,
             "high voltage alone does not claim charging detection");
+        CheckAutomaticRefresh(Check);
         Console.WriteLine($"OFFLINE CHECKS PASSED: {checks}. Synthetic data only; no HID enumeration or device access.");
         return 0;
+    }
+
+    private static void CheckAutomaticRefresh(Action<bool, string> check)
+    {
+        int calls = 0;
+        int inFlight = 0;
+        int maxInFlight = 0;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim(true);
+        using var completed = new AutoResetEvent(false);
+        using var refresh = new InteractiveRefresh(output =>
+        {
+            int current = Interlocked.Increment(ref inFlight);
+            maxInFlight = Math.Max(maxInFlight, current);
+            int attempt = Interlocked.Increment(ref calls);
+            entered.Set();
+            try
+            {
+                if (!release.Wait(TimeSpan.FromSeconds(5)))
+                    throw new TimeoutException("Synthetic query was not released");
+                if (attempt == 2) throw new IOException("Synthetic disconnect");
+                output.WriteLine("Synthetic battery reading " + attempt);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref inFlight);
+                completed.Set();
+            }
+        });
+        void AwaitQuery()
+        {
+            if (!completed.WaitOne(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Synthetic query did not finish");
+        }
+        string Collect(TimeSpan time)
+        {
+            string? result = null;
+            if (!SpinWait.SpinUntil(() => (result = refresh.Update(time)) is not null,
+                    TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Query result was not collected");
+            return result!;
+        }
+
+        check(!refresh.Automatic && InteractiveRefresh.Interval == TimeSpan.FromSeconds(5),
+            "automatic refresh defaults OFF with fixed 5-second interval");
+        refresh.Update(TimeSpan.Zero);
+        AwaitQuery();
+        Collect(TimeSpan.Zero);
+        refresh.Update(TimeSpan.FromHours(1));
+        check(calls == 1, "startup query occurs once; OFF never polls");
+
+        refresh.ToggleAutomatic();
+        refresh.Update(TimeSpan.FromHours(1));
+        AwaitQuery();
+        check(Collect(TimeSpan.FromHours(1)).Contains("Synthetic disconnect"),
+            "enabling automatic refresh queries immediately; polling errors become display results");
+        refresh.Update(TimeSpan.FromHours(1) + TimeSpan.FromSeconds(4.999));
+        check(calls == 2, "no automatic query before 5 seconds");
+        refresh.Update(TimeSpan.FromHours(1) + InteractiveRefresh.Interval);
+        AwaitQuery();
+        check(Collect(TimeSpan.FromSeconds(3605)).Contains("Synthetic battery reading 3"),
+            "polls at 5 seconds and recovers after a failed query");
+
+        entered.Reset();
+        release.Reset();
+        try
+        {
+            refresh.RequestManual();
+            refresh.Update(TimeSpan.FromSeconds(3606));
+            check(entered.Wait(TimeSpan.FromSeconds(5)), "manual refresh starts while automatic mode is ON");
+            refresh.RequestManual();
+            refresh.ToggleAutomatic(); // OFF
+            refresh.ToggleAutomatic(); // ON: immediate request while busy
+            refresh.Update(TimeSpan.FromHours(2));
+            check(calls == 4 && maxInFlight == 1, "manual, toggle and overdue polling never overlap HID queries");
+            refresh.ToggleAutomatic(); // OFF cancels its queued immediate request.
+        }
+        finally { release.Set(); }
+        AwaitQuery();
+        Collect(TimeSpan.FromHours(2)); // The coalesced manual request still runs.
+        AwaitQuery();
+        Collect(TimeSpan.FromHours(2));
+        refresh.Update(TimeSpan.FromHours(3));
+        check(calls == 5 && !refresh.Automatic && maxInFlight == 1,
+            "OFF cancels automatic polling while preserving a queued manual refresh");
+
+        refresh.ToggleAutomatic();
+        refresh.Dispose();
+        refresh.Update(TimeSpan.FromDays(1));
+        refresh.RequestManual();
+        refresh.ToggleAutomatic();
+        refresh.Update(TimeSpan.FromDays(2));
+        check(calls == 5 && !refresh.Automatic, "quit cancels pending work without waiting for the polling interval");
     }
 
     private sealed class FakeTransport(byte[] response, string failure = "") : IFeatureTransport
