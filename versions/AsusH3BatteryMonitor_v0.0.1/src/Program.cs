@@ -134,7 +134,7 @@ internal static class Program
                 if (diagnostic) output.WriteLine($"[{watch.Elapsed.TotalMilliseconds,10:F3} ms] {text}");
             }
 
-            Log("ASUS TUF Gaming H3 Wireless monitor v0.0.1; HidSharp 2.6.4; Windows x64.");
+            Log("ASUS TUF Gaming H3 Wireless monitor v0.0.2 Alpha; HidSharp 2.6.4; Windows x64.");
             Log($"Target VID=0B05 PID=1963 MI_03 usagePage=FF00 usage=0001; delay={delayMs} ms.");
             Log("Only the user-provided capture packets are enabled. Setup/closing packet meanings are unconfirmed.");
 
@@ -273,6 +273,7 @@ internal static class Program
 
     private static void PrintHelp()
     {
+        Console.WriteLine("AsusH3BatteryMonitor v0.0.2 Alpha");
         Console.WriteLine("AsusH3BatteryMonitor.exe [--diagnostic] [--delay 20|35|50|100] [--inspect]");
         Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [A] Auto ON/OFF, [Q] Quit (no Enter).");
         Console.WriteLine("Auto refresh defaults OFF; enabling queries immediately, then every 5 seconds. Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");

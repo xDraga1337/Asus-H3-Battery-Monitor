@@ -6,11 +6,11 @@ The project reads battery data directly from the headset dongle using a reverse-
 
 Current version:
 
-- alpha v0.0.1
+- v0.0.2 Alpha
 
 For more in depth  details, usage, limitations, measured battery data, etc.. check out:
 
-[AsusH3BatteryMonitor v0.0.1 README](versions/AsusH3BatteryMonitor_v0.0.1/README.md)
+[AsusH3BatteryMonitor v0.0.2 Alpha README](versions/AsusH3BatteryMonitor_v0.0.1/README.md)
 
 ## Status
 

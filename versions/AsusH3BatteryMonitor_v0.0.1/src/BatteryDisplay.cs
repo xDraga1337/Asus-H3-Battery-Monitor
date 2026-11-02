@@ -1,7 +1,7 @@
 namespace AsusH3BatteryProbe;
 
 // null means charging state is unknown, not that the headset is unplugged.
-// v0.0.1 supplies only millivolts: no H3 charging flag has been confirmed.
+// v0.0.2 Alpha supplies only millivolts: no H3 charging flag has been confirmed.
 internal sealed record BatteryReading(int Millivolts, bool? IsCharging = null,
     int? EstimatedPercentWhileCharging = null);
 

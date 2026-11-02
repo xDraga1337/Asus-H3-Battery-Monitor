@@ -1,6 +1,6 @@
 # ASUS TUF Gaming H3 Wireless Battery Monitor
 
-Version **v0.0.1**. Supported device: **ASUS TUF Gaming H3 Wireless**.
+Version **v0.0.2 Alpha** (project version `0.0.2-alpha`). Supported device: **ASUS TUF Gaming H3 Wireless**.
 
 This Windows x64 console reader performs one known-working HID feature-report
 transaction, then shows an approximate battery percentage and the measured
@@ -16,7 +16,9 @@ finishes before another starts; missed polls never build a backlog.
 Manual and automatic requests share one worker; transactions never overlap.
 The display is replaced on refresh, including in diagnostic mode. Errors remain
 in the menu so manual or automatic refresh can recover after the headset or USB
-dongle reconnects. Q stops scheduling immediately and lets any active transaction
+dongle reconnects. With automatic refresh enabled, recovery is attempted on
+the next scheduled query after reconnection; with it disabled, press R.
+Q stops scheduling immediately and lets any active transaction
 finish its existing cleanup before exiting; it never waits for the next poll. From PowerShell:
 
 ```powershell
@@ -49,6 +51,9 @@ and exceptions:
 
 These are explicitly approximate stepped discharge estimates, not calibrated
 state-of-charge percentages or direct percentages reported by the headset.
+Battery percentage estimates are experimental. Voltage accuracy has not been
+independently verified against a calibrated meter; displayed millivolts should
+not be treated as a validated physical measurement.
 
 | Millivolts | Displayed level |
 | --- | --- |
@@ -76,7 +81,7 @@ reading. More measurements are needed before changing the approximation.
 
 ## Charging limitation
 
-**Charging detection is not confirmed in v0.0.1.** Observed charging voltages
+**Charging detection is not confirmed in v0.0.2 Alpha.** Observed charging voltages
 include 3998 mV and 4303 mV. Charging elevates voltage and can make this mapping
 show 100% when the battery is not full. The normal reader behavior is preserved;
 use its percentage as a rough indication while unplugged. A displayed 100%
@@ -111,17 +116,17 @@ the .NET runtime and HidSharp. No separate .NET installation or companion DLLs
 are needed. Bundled native runtime libraries may extract to a temporary folder
 when run; that folder must be writable.
 
-With the pinned .NET SDK 10.0.401 (the build script uses the existing installation
-at `C:\Users\M\.dotnet\dotnet.exe`):
+From PowerShell in this version folder, use the pinned Windows .NET SDK
+10.0.401:
 
 ```powershell
-python build.py
+& 'C:\Users\M\.dotnet\dotnet.exe' run --project '.\src\AsusH3BatteryMonitor.csproj' -- --self-test
+& 'C:\Users\M\.dotnet\dotnet.exe' publish '.\src\AsusH3BatteryMonitor.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o '.\publish'
 ```
 
-From WSL, use `python3 build.py`. The script resolves its own version folder and
-keeps configured build output, package caches and temporary build files there.
-Restore uses the local HidSharp archive when present and official NuGet for
-missing packages, including the Windows runtime pack.
+Build output and intermediate files stay under `tmp/`. Restore uses the local
+HidSharp archive when present and official NuGet for missing packages, including
+the Windows runtime pack. The executable is `publish/AsusH3BatteryMonitor.exe`.
 
 - `src/Program.cs`: CLI, console controls, unchanged device selection and HID handoff.
 - `src/InteractiveRefresh.cs`: serialized refresh scheduling and buffered query output.
@@ -132,7 +137,9 @@ missing packages, including the Windows runtime pack.
 - `tmp/` and `packages/`: generated build output/caches; ignored by Git.
 - `notes/`: build and verification evidence.
 
-Future versions must use new folders under
-`D:\programming\BIGPROJECTS\AsusH3BatteryMonitor\versions`, named
-`AsusH3BatteryMonitor_vX.Y.Z`. Never overwrite an older version. The Desktop
-working project is read-only reference material and must remain untouched.
+For v0.0.2 Alpha, the source remains in the existing
+`versions/AsusH3BatteryMonitor_v0.0.1` directory; the folder name is retained for
+compatibility and does not indicate the application version. No source tree was
+reorganized or duplicated. The Desktop working project remains read-only.
+
+See the repository-root `RELEASE_NOTES.md` for changes since v0.0.1.
