@@ -4,7 +4,9 @@ namespace AsusH3BatteryProbe;
 // query and private output buffer; it never writes to the live console.
 internal sealed class InteractiveRefresh(Action<TextWriter> query) : IDisposable
 {
-    internal static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
+    private static readonly int[] IntervalSeconds = [5, 15, 30, 60];
+    private int intervalIndex;
+    internal TimeSpan Interval => TimeSpan.FromSeconds(IntervalSeconds[intervalIndex]);
     private Task<string>? active;
     private bool manualRequested = true; // Preserve the initial startup reading.
     private bool automaticRequested;
@@ -18,6 +20,14 @@ internal sealed class InteractiveRefresh(Action<TextWriter> query) : IDisposable
         if (stopped) return;
         Automatic = !Automatic;
         automaticRequested = Automatic; // ON requests an immediate query; OFF cancels it.
+    }
+
+    internal void CycleInterval(TimeSpan now)
+    {
+        if (stopped) return;
+        intervalIndex = (intervalIndex + 1) % IntervalSeconds.Length;
+        nextRefresh = now + Interval;
+        automaticRequested = false; // Restart the automatic schedule from this change.
     }
 
     internal void RequestManual()

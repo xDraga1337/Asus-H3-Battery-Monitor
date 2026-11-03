@@ -109,6 +109,7 @@ internal static class OfflineChecks
         Check(new BatteryReading(4303).IsCharging is null,
             "high voltage alone does not claim charging detection");
         CheckAutomaticRefresh(Check);
+        CheckRefreshIntervals(Check);
         Console.WriteLine($"OFFLINE CHECKS PASSED: {checks}. Synthetic data only; no HID enumeration or device access.");
         return 0;
     }
@@ -154,8 +155,8 @@ internal static class OfflineChecks
             return result!;
         }
 
-        check(!refresh.Automatic && InteractiveRefresh.Interval == TimeSpan.FromSeconds(5),
-            "automatic refresh defaults OFF with fixed 5-second interval");
+        check(!refresh.Automatic && refresh.Interval == TimeSpan.FromSeconds(5),
+            "automatic refresh defaults OFF with default 5-second interval");
         refresh.Update(TimeSpan.Zero);
         AwaitQuery();
         Collect(TimeSpan.Zero);
@@ -169,7 +170,7 @@ internal static class OfflineChecks
             "enabling automatic refresh queries immediately; polling errors become display results");
         refresh.Update(TimeSpan.FromHours(1) + TimeSpan.FromSeconds(4.999));
         check(calls == 2, "no automatic query before 5 seconds");
-        refresh.Update(TimeSpan.FromHours(1) + InteractiveRefresh.Interval);
+        refresh.Update(TimeSpan.FromHours(1) + refresh.Interval);
         AwaitQuery();
         check(Collect(TimeSpan.FromSeconds(3605)).Contains("Synthetic battery reading 3"),
             "polls at 5 seconds and recovers after a failed query");
@@ -204,6 +205,83 @@ internal static class OfflineChecks
         refresh.ToggleAutomatic();
         refresh.Update(TimeSpan.FromDays(2));
         check(calls == 5 && !refresh.Automatic, "quit cancels pending work without waiting for the polling interval");
+    }
+
+    private static void CheckRefreshIntervals(Action<bool, string> check)
+    {
+        int calls = 0;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim(true);
+        using var refresh = new InteractiveRefresh(output =>
+        {
+            Interlocked.Increment(ref calls);
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Synthetic interval query was not released");
+            output.WriteLine("Synthetic interval reading");
+        });
+        void Collect(TimeSpan now)
+        {
+            if (!SpinWait.SpinUntil(() => refresh.Update(now) is not null, TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Interval query result was not collected");
+        }
+
+        refresh.Update(TimeSpan.Zero);
+        Collect(TimeSpan.Zero);
+        var now = TimeSpan.FromSeconds(1);
+        foreach (int seconds in new[] { 15, 30, 60, 5 })
+        {
+            refresh.CycleInterval(now);
+            check(refresh.Interval == TimeSpan.FromSeconds(seconds), $"interval cycles to {seconds} seconds while OFF");
+            now += TimeSpan.FromMinutes(2);
+            refresh.Update(now);
+            check(calls == 1 && !refresh.Automatic, "interval selection while OFF never starts a query");
+        }
+
+        refresh.ToggleAutomatic();
+        refresh.Update(now);
+        Collect(now);
+        check(calls == 2, "enabling after interval selection still queries immediately");
+        foreach (int seconds in new[] { 15, 30, 60, 5 })
+        {
+            now += TimeSpan.FromSeconds(1);
+            refresh.CycleInterval(now);
+            int before = calls;
+            var due = now + TimeSpan.FromSeconds(seconds);
+            refresh.Update(due - TimeSpan.FromMilliseconds(1));
+            check(calls == before && refresh.Interval == TimeSpan.FromSeconds(seconds),
+                $"changing to {seconds} seconds while polling resets the deadline from the change");
+            refresh.Update(due);
+            Collect(due);
+            check(calls == before + 1, $"automatic query starts at the selected {seconds}-second deadline");
+            now = due;
+        }
+
+        entered.Reset();
+        release.Reset();
+        try
+        {
+            refresh.RequestManual();
+            refresh.Update(now);
+            check(entered.Wait(TimeSpan.FromSeconds(5)), "synthetic query is active for interval change");
+            now += TimeSpan.FromSeconds(10); // The previous 5-second deadline is overdue.
+            refresh.CycleInterval(now); // 15 seconds
+            refresh.Update(now);
+        }
+        finally { release.Set(); }
+        int activeCalls = calls;
+        Collect(now);
+        refresh.Update(now + TimeSpan.FromSeconds(14.999));
+        check(calls == activeCalls, "interval change during an active query cancels the overdue poll");
+        refresh.Update(now + TimeSpan.FromSeconds(15));
+        Collect(now + TimeSpan.FromSeconds(15));
+        check(calls == activeCalls + 1, "active query finishes before polling resumes at the changed deadline");
+
+        refresh.ToggleAutomatic(); // OFF
+        refresh.CycleInterval(now + TimeSpan.FromSeconds(16)); // 30 seconds
+        refresh.Update(now + TimeSpan.FromHours(1));
+        check(calls == activeCalls + 1 && refresh.Interval == TimeSpan.FromSeconds(30),
+            "changing interval after disabling polling leaves it OFF without querying");
     }
 
     private sealed class FakeTransport(byte[] response, string failure = "") : IFeatureTransport

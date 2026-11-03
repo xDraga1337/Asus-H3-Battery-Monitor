@@ -96,6 +96,7 @@ internal static class Program
                 if (key == ConsoleKey.Q) return;
                 if (key == ConsoleKey.A) { refresh.ToggleAutomatic(); redraw = true; }
                 if (key == ConsoleKey.R) refresh.RequestManual();
+                if (key == ConsoleKey.I) { refresh.CycleInterval(clock.Elapsed); redraw = true; }
             }
 
             if (refresh.Update(clock.Elapsed) is string result)
@@ -108,8 +109,8 @@ internal static class Program
                 Console.Clear();
                 Console.Write(display);
                 Console.WriteLine();
-                Console.WriteLine($"Automatic refresh: {(refresh.Automatic ? "ON" : "OFF")} (5 seconds)");
-                Console.WriteLine("[R] Refresh    [A] Toggle automatic refresh    [Q] Quit");
+                Console.WriteLine($"Automatic refresh: {(refresh.Automatic ? "ON" : "OFF")} ({refresh.Interval.TotalSeconds:0} seconds)");
+                Console.WriteLine("[R] Refresh    [A] Toggle automatic refresh    [I] Cycle interval    [Q] Quit");
                 redraw = false;
             }
             Thread.Sleep(25);
@@ -275,8 +276,9 @@ internal static class Program
     {
         Console.WriteLine("AsusH3BatteryMonitor v0.0.2 Alpha");
         Console.WriteLine("AsusH3BatteryMonitor.exe [--diagnostic] [--delay 20|35|50|100] [--inspect]");
-        Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [A] Auto ON/OFF, [Q] Quit (no Enter).");
-        Console.WriteLine("Auto refresh defaults OFF; enabling queries immediately, then every 5 seconds. Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");
+        Console.WriteLine("Default: read battery with 35 ms waits; [R] Refresh, [A] Auto ON/OFF, [I] Cycle interval, [Q] Quit (no Enter).");
+        Console.WriteLine("Auto refresh defaults OFF; enabling queries immediately, then at the selected interval (default 5 seconds). Each refresh opens a fresh HID connection and performs one A/B/C/D transaction. Redirected runs read once.");
+        Console.WriteLine("I cycles 5/15/30/60 seconds and resets the next poll from the change; while OFF it selects without querying.");
         Console.WriteLine("Battery percentage is approximate: >=3950 mV=100%, >=3850=75%, >=3750=50%, >=3500=25%, below=0% (critically low).");
         Console.WriteLine("Charging detection is unconfirmed; voltage-based percentages can be misleading while charging.");
         Console.WriteLine("--diagnostic: show verbose HID metadata, packets, timestamps and response bytes.");

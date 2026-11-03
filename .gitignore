@@ -41,5 +41,9 @@ publish/
 artifacts/
 out/
 
-# Generated temporary outputs (keep helper scripts visible)
-/tmp/*/
+# Local development builds and temporary verification helpers
+/dev/
+/tmp/
+
+# Personal notes
+/notes/muistio

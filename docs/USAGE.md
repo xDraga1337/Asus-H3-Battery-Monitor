@@ -8,10 +8,15 @@ millivolts. The protocol is reverse engineered and experimental.
 
 ## Run
 
-Copy `publish\AsusH3BatteryMonitor.exe` anywhere and double-click it. The console
-stays open with **R** to refresh, **A** to toggle automatic refresh, and **Q** to
+For a development build, run `build-dev.ps1` from the repository root, then copy
+`dev\AsusH3BatteryMonitor.exe` anywhere and double-click it. The console
+stays open with **R** to refresh, **A** to toggle automatic refresh, **I** to cycle the interval, and **Q** to
 quit (no Enter). Automatic refresh is **OFF by default**. Enabling it requests a
-battery query immediately, then polls every 5 seconds. A busy query always
+battery query immediately, then polls at the selected interval (5 seconds by default).
+**I** cycles **5, 15, 30, 60 seconds**, then returns to 5. The displayed interval
+updates immediately; the next automatic query is scheduled one selected interval
+from the change. While automatic refresh is OFF, selecting an interval does not
+start a query. The selection lasts for the current session. A busy query always
 finishes before another starts; missed polls never build a backlog.
 Manual and automatic requests share one worker; transactions never overlap.
 The display is replaced on refresh, including in diagnostic mode. Errors remain
@@ -33,7 +38,7 @@ Battery: 50%
 Voltage: 3782 mV
 
 Automatic refresh: OFF (5 seconds)
-[R] Refresh    [A] Toggle automatic refresh    [Q] Quit
+[R] Refresh    [A] Toggle automatic refresh    [I] Cycle interval    [Q] Quit
 
 ```
 
@@ -120,26 +125,43 @@ the .NET runtime and HidSharp. No separate .NET installation or companion DLLs
 are needed. Bundled native runtime libraries may extract to a temporary folder
 when run; that folder must be writable.
 
-From PowerShell in the repository root, use the pinned Windows .NET SDK
-10.0.401:
+Development toward v0.0.3 keeps the existing `0.0.2-alpha` version metadata. It
+does not replace the published v0.0.2 release or tag. From Windows PowerShell in
+the repository root:
 
 ```powershell
-& 'C:\Users\M\.dotnet\dotnet.exe' run --project '.\src\AsusH3BatteryMonitor.csproj' -- --self-test
-& 'C:\Users\M\.dotnet\dotnet.exe' publish '.\src\AsusH3BatteryMonitor.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o '.\publish'
+.\build-dev.ps1
+.\dev\AsusH3BatteryMonitor.exe --self-test
+.\dev\AsusH3BatteryMonitor.exe
 ```
 
-Build output and intermediate files stay under `tmp/`. Restore uses the local
+The script prefers `C:\Users\M\.dotnet\dotnet.exe`, then checks PATH and the
+standard Windows .NET installation for a stable .NET 10 SDK. It selects that SDK
+using an isolated `global.json` under `tmp/`, leaving the repository SDK pin
+unchanged. It can be invoked from another directory using its full path.
+
+Each invocation removes the previous development EXE, runs source offline
+self-tests, publishes to a fresh staging directory, copies the result to
+`dev/AsusH3BatteryMonitor.exe`, and runs that EXE with `--self-test`. A nonzero
+exit, missing output, or failed EXE test fails the script and removes the target
+EXE. No success message is printed for an earlier build. Offline tests use
+synthetic data and never access HID devices.
+
+The development EXE goes under `dev/`; build intermediates and staging files
+stay under `tmp/`. Restore uses locked package versions and may require network
+access for uncached packages. Restore uses the local
 HidSharp archive when present and official NuGet for missing packages, including
-the Windows runtime pack. The executable is `publish/AsusH3BatteryMonitor.exe`.
+the Windows runtime pack. No publish to GitHub or release creation is performed.
 
 - `src/Program.cs`: CLI, console controls, unchanged device selection and HID handoff.
 - `src/InteractiveRefresh.cs`: serialized refresh scheduling and buffered query output.
 - `src/Protocol.cs`: preserved packets, transaction, parser and diagnostics.
 - `src/BatteryDisplay.cs`: approximate mapping and presentation.
 - `src/OfflineChecks.cs`: synthetic protocol, presentation and refresh scheduling checks.
-- `publish/`: final executable; ignored by Git.
-- `tmp/` subdirectories and `packages/`: generated output/caches; ignored by Git.
-- `tmp/*.ps1`: preserved local verification helpers.
+- `build-dev.ps1`: development build and offline verification script.
+- `dev/`: generated development executable; ignored by Git.
+- `publish/`: existing manual publish output; ignored by Git.
+- `tmp/` and `packages/`: local build output, staging, helpers and caches; ignored by Git.
 - `notes/`: build and verification evidence.
 
 The active source tree is `src/` at the repository root. `global.json`,
