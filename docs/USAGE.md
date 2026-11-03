@@ -116,7 +116,7 @@ the .NET runtime and HidSharp. No separate .NET installation or companion DLLs
 are needed. Bundled native runtime libraries may extract to a temporary folder
 when run; that folder must be writable.
 
-From PowerShell in this version folder, use the pinned Windows .NET SDK
+From PowerShell in the repository root, use the pinned Windows .NET SDK
 10.0.401:
 
 ```powershell
@@ -134,12 +134,13 @@ the Windows runtime pack. The executable is `publish/AsusH3BatteryMonitor.exe`.
 - `src/BatteryDisplay.cs`: approximate mapping and presentation.
 - `src/OfflineChecks.cs`: synthetic protocol, presentation and refresh scheduling checks.
 - `publish/`: final executable; ignored by Git.
-- `tmp/` and `packages/`: generated build output/caches; ignored by Git.
+- `tmp/` subdirectories and `packages/`: generated output/caches; ignored by Git.
+- `tmp/*.ps1`: preserved local verification helpers.
 - `notes/`: build and verification evidence.
 
-For v0.0.2 Alpha, the source remains in the existing
-`versions/AsusH3BatteryMonitor_v0.0.1` directory; the folder name is retained for
-compatibility and does not indicate the application version. No source tree was
-reorganized or duplicated. The Desktop working project remains read-only.
+The active source tree is `src/` at the repository root. `global.json`,
+`Directory.Build.props`, and `NuGet.Config` also live at the root.
+`docs/USAGE.md` contains this guide. Existing generated artifacts are preserved
+under `tmp/prior-structure/`. The Desktop working project remains read-only.
 
-See the repository-root `RELEASE_NOTES.md` for changes since v0.0.1.
+See the repository-root [RELEASE_NOTES.md](../RELEASE_NOTES.md) for changes since v0.0.1.
